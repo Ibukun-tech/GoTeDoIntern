@@ -18,8 +18,42 @@
 |
 */
 
-import Route from '@ioc:Adonis/Core/Route'
+import Route from "@ioc:Adonis/Core/Route";
+import { schema, rules } from "@ioc:Adonis/Core/Validator";
+import Database from "@ioc:Adonis/Lucid/Database";
+Route.post("/user", async ({ request, response }) => {
+  try {
+    const userSchema = schema.create({
+      email_address: schema.string({}, [rules.email()]),
+      full_name: schema.string(),
+    });
+    const payload = await request.validate({ schema: userSchema });
+    // console.log(payload);
+    // 1. WE WILL ADD IT TO BE SENT TO THE DATABASE
 
-Route.get('/', async () => {
-  return { hello: 'world' }
-})
+    // 2. WE THEN SEND A RESPONSE TO IT
+    console.log(request.body());
+    return;
+  } catch (err) {
+    console.log(err);
+    return response.badRequest(err.messages);
+  }
+});
+//
+Route.post("/information", async ({ request }) => {
+  try {
+    const informationSchema = schema.create({
+      email_address: schema.string([rules.email()]),
+      last_name: schema.string(),
+      first_name: schema.string(),
+      title: schema.string(),
+      text: schema.string(),
+      attached_url: schema.string(),
+    });
+  } catch (err) {
+    console.log(err);
+  }
+});
+Route.get("/", async () => {
+  return { hello: "world" };
+});

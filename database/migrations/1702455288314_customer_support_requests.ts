@@ -8,9 +8,10 @@ export default class extends BaseSchema {
       table.increments("id");
       table.string("first_name");
       table.string("last_name");
-      table.string("email");
-      table.string("message_title");
-      table.string("message_text");
+      table.string("email_address");
+      table.string("title");
+      table.string("text");
+      table.string("attached_url");
       table
         .integer("user_id")
         .unsigned()
