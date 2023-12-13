@@ -28,15 +28,16 @@ Route.post("/user", async ({ request, response }) => {
       full_name: schema.string(),
     });
     const payload = await request.validate({ schema: userSchema });
-    // console.log(payload);
-    // 1. WE WILL ADD IT TO BE SENT TO THE DATABASE
-
-    // 2. WE THEN SEND A RESPONSE TO IT
-    console.log(request.body());
-    return;
+    await Database.table("users").insert({
+      email_address: payload.email_address,
+      full_name: payload.full_name,
+    });
+    return { user: "user has been created" };
   } catch (err) {
-    console.log(err);
-    return response.badRequest(err.messages);
+    if (err) {
+      console.log(err);
+      return response.status(400).send(err.messages);
+    }
   }
 });
 //
@@ -48,8 +49,15 @@ Route.post("/information", async ({ request }) => {
       first_name: schema.string(),
       title: schema.string(),
       text: schema.string(),
-      attached_url: schema.string(),
     });
+    const attached_image = request.file("attached_image", {
+      size: "5mb",
+      extnames: ["jpg", "png"],
+    });
+    await attached_image.moveToDisk("./");
+    const fileName = attached_image.fileName;
+    const payload = await request.validate({ schema: informationSchema });
+    const value = { ...payload, attached_url: fileName };
   } catch (err) {
     console.log(err);
   }
