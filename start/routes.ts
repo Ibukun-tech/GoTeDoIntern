@@ -41,7 +41,7 @@ Route.post("/user", async ({ request, response }) => {
   }
 });
 //
-Route.post("/information", async ({ request }) => {
+Route.post("/information", async ({ request, response }) => {
   try {
     const informationSchema = schema.create({
       email_address: schema.string([rules.email()]),
@@ -54,10 +54,31 @@ Route.post("/information", async ({ request }) => {
       size: "5mb",
       extnames: ["jpg", "png"],
     });
+    // @ts-ignore
     await attached_image.moveToDisk("./");
+    // @ts-ignore
     const fileName = attached_image.fileName;
+    // console.log(fileName, "the name of the file");
     const payload = await request.validate({ schema: informationSchema });
     const value = { ...payload, attached_url: fileName };
+    // Now We are first going to find the user through the email
+    const user = await Database.from("users").where(
+      "email_address",
+      value.email_address
+    );
+    if (user.length === 0) {
+      return response.status(400).json({ error: "no user of such email" });
+    }
+    await Database.table("customer_support_requests").insert({
+      email_address: value.email_address,
+      last_name: value.last_name,
+      first_name: value.first_name,
+      title: value.title,
+      text: value.text,
+      user_id: user[0].id,
+      attached_url: value.attached_url,
+    });
+    return Response.json();
   } catch (err) {
     console.log(err);
   }
