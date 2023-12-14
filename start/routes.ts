@@ -36,7 +36,7 @@ Route.post("/user", async ({ request, response }) => {
   } catch (err) {
     if (err) {
       console.log(err);
-      return response.status(400).send(err.messages);
+      return response.status(500).json({ error: err.message });
     }
   }
 });
@@ -78,9 +78,10 @@ Route.post("/information", async ({ request, response }) => {
       user_id: user[0].id,
       attached_url: value.attached_url,
     });
-    return Response.json();
+    return response.status(201).json(value);
   } catch (err) {
     console.log(err);
+    return response.status(500).json({ error: err.message });
   }
 });
 Route.get("/", async () => {
