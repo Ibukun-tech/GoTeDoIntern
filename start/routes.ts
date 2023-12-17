@@ -17,73 +17,97 @@
 | import './routes/customer'
 |
 */
+// User schema
+const userSchema = () =>
+  schema.create({
+    email_address: schema.string({}, [rules.email()]),
+    full_name: schema.string(),
+  });
+//Information schema
+const informationSchema = schema.create({
+  email_address: schema.string([rules.email()]),
+  last_name: schema.string(),
+  first_name: schema.string(),
+  title: schema.string(),
+  text: schema.string(),
+});
+
+const validate = async (req, schema) => await req.validate({ schema: schema });
+//User database
+const createUser = async (payload) =>
+  await Database.table("users").insert({
+    email_address: payload.email_address,
+    full_name: payload.full_name,
+  });
 
 import Route from "@ioc:Adonis/Core/Route";
 import { schema, rules } from "@ioc:Adonis/Core/Validator";
 import Database from "@ioc:Adonis/Lucid/Database";
-Route.post("/user", async ({ request, response }) => {
-  try {
-    const userSchema = schema.create({
-      email_address: schema.string({}, [rules.email()]),
-      full_name: schema.string(),
-    });
-    const payload = await request.validate({ schema: userSchema });
-    await Database.table("users").insert({
-      email_address: payload.email_address,
-      full_name: payload.full_name,
-    });
-    return { user: "user has been created" };
-  } catch (err) {
-    if (err) {
-      console.log(err);
-      return response.status(500).json({ error: err.message });
-    }
-  }
-});
+
 //
-Route.post("/information", async ({ request, response }) => {
-  try {
-    const informationSchema = schema.create({
-      email_address: schema.string([rules.email()]),
-      last_name: schema.string(),
-      first_name: schema.string(),
-      title: schema.string(),
-      text: schema.string(),
-    });
-    const attached_image = request.file("attached_image", {
-      size: "5mb",
-      extnames: ["jpg", "png"],
-    });
-    // @ts-ignore
-    await attached_image.moveToDisk("./");
-    // @ts-ignore
-    const fileName = attached_image.fileName;
-    // console.log(fileName, "the name of the file");
-    const payload = await request.validate({ schema: informationSchema });
-    const value = { ...payload, attached_url: fileName };
-    // Now We are first going to find the user through the email
-    const user = await Database.from("users").where(
-      "email_address",
-      value.email_address
-    );
-    if (user.length === 0) {
-      return response.status(400).json({ error: "no user of such email" });
-    }
-    await Database.table("customer_support_requests").insert({
-      email_address: value.email_address,
-      last_name: value.last_name,
-      first_name: value.first_name,
-      title: value.title,
-      text: value.text,
-      user_id: user[0].id,
-      attached_url: value.attached_url,
-    });
-    return response.status(201).json(value);
-  } catch (err) {
-    console.log(err);
-    return response.status(500).json({ error: err.message });
+const findUser = async (email) => {
+  return await Database.from("users").where("email_address", email);
+};
+const errorHandler = async (res, err) => {
+  return await res.status(500).json({ error: err.message });
+};
+const customerSupportRequestToDb = async (ctx) => {
+  return await Database.table("customer_support_requests").insert(ctx);
+};
+const createUserHandler = async (req, res) => {
+  const schema = userSchema();
+  const payload = await validate(req, schema);
+  const user = await createUser(payload);
+  return res.status(201).json({ user });
+};
+
+const createSupportFunc = async (request, response) => {
+  const schema = informationSchema;
+  const attached_image = request.file("attached_image", {
+    size: "5mb",
+    extnames: ["jpg", "png"],
+  });
+  // @ts-ignore
+  await attached_image.moveToDisk("./");
+  // @ts-ignore
+  const fileName = attached_image.fileName;
+  // console.log(fileName, "the name of the file");
+  const payload = await validate(request, schema);
+
+  // Now We are first going to find the user through the email
+  const value = { ...payload };
+  const user = await findUser(value.email_address);
+  if (user.length === 0) {
+    return response
+      .status(400)
+      .json({ error: `no user of such email ${value.email_address}` });
   }
-});
+  if (user.length > 1) {
+    return response.status(500).json({
+      error: "we already have more than one user using this email",
+    });
+  }
+  const values = user[0];
+  const ctxDb = {
+    ...payload,
+    email_address: values.email_address,
+    attached_url: fileName,
+  };
+  const data = await customerSupportRequestToDb(ctxDb);
+  return response.status(201).json({ data });
+};
+const handleFunc =
+  (handler) =>
+  async ({ request, response }) => {
+    try {
+      return await handler(request, response);
+    } catch (error) {
+      return errorHandler(response, error);
+    }
+  };
+
+Route.post("/user", handleFunc(createUserHandler));
+Route.post("/information", handleFunc(createSupportFunc));
 Route.get("/", async () => {
   return { hello: "world" };
 });
