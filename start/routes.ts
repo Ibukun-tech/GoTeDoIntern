@@ -21,69 +21,100 @@
 import Route from "@ioc:Adonis/Core/Route";
 import { schema, rules } from "@ioc:Adonis/Core/Validator";
 import Database from "@ioc:Adonis/Lucid/Database";
-Route.post("/user", async ({ request, response }) => {
-  try {
-    const userSchema = schema.create({
-      email_address: schema.string({}, [rules.email()]),
-      full_name: schema.string(),
-    });
-    const payload = await request.validate({ schema: userSchema });
-    await Database.table("users").insert({
-      email_address: payload.email_address,
-      full_name: payload.full_name,
-    });
-    return { user: "user has been created" };
-  } catch (err) {
-    if (err) {
-      console.log(err);
-      return response.status(500).json({ error: err.message });
+
+/* Request Schemas */
+
+const userSchema = schema.create({
+  email_address: schema.string({}, [rules.email()]),
+  full_name: schema.string(),
+});
+
+const informationSchema = schema.create({
+  email_address: schema.string([rules.email()]),
+  last_name: schema.string(),
+  first_name: schema.string(),
+  title: schema.string(),
+  text: schema.string(),
+});
+
+async function validateRequest(schema, request) {
+  return await request.validate({ schema });
+}
+
+/* Database */
+
+async function createUser(userData) {
+  return await Database.table("users").insert(userData);
+}
+
+async function getUsers({ email_address }) {
+  return await Database.from("users").where("email_address", email_address);
+}
+
+async function createCustomerSupportRequest(csrData) {
+  return await Database.table("customer_support_request").insert(csrData);
+}
+
+/* File system */
+
+async function saveFileToDisk(file, destination = "./") {
+  return await file.moveToDisk(destination)
+}
+
+/* Handlers */
+
+async function helloWorldHandler(request, response) {
+  return response.status(200).json({ data: "Hello World!" });
+}
+
+function errorHandler(request, response, error) {
+  console.log(error);
+  return response.status(500).json({ error: error.message });
+}
+
+async function createUserHandler(request, response) {
+  const payload = await validateRequest(userSchema, request);
+  const userData = { full_name: payload.full_name, email_address: payload.email_address };
+  const user = await createUser(userData);
+  return response.json({ data: user });
+}
+
+async function createCustomerSupportRequest(request, response) {
+  const payload = await validateRequest(informationSchema, request);
+
+  const attached_image = request.file("attached_image", {
+    size: "5mb",
+    extnames: ["jpg", "png"],
+  });
+  await saveFileToDisk(attached_image);
+
+  const users = await getUsers({ email_address: payload.email_address });
+  if (0 === users.length) {
+    return response.status(400).json({ error: `No user with email ${payload.email_address}` });
+  }
+  if (users.length > 1) {
+    return response.status(500).json({ error: `Unexpected error, multiple users email ${payload.email_address}` });
+  }
+  const user = users[0];
+
+  const csrData = { ...payload, user_id: user.id, attached_url: attached_image.fileName };
+  const csr = await createCustomerSupportRequest(csrData);
+  return response.status(201).json({ data: csr })
+
+}
+
+/* Routes */
+
+async function handlerFunc(handler) {
+  return async (request, response) => {
+    try {
+      return await handler(request, response);
+    } catch (e) {
+      return errorHandler(request, response, e);
     }
   }
-});
-//
-Route.post("/information", async ({ request, response }) => {
-  try {
-    const informationSchema = schema.create({
-      email_address: schema.string([rules.email()]),
-      last_name: schema.string(),
-      first_name: schema.string(),
-      title: schema.string(),
-      text: schema.string(),
-    });
-    const attached_image = request.file("attached_image", {
-      size: "5mb",
-      extnames: ["jpg", "png"],
-    });
-    // @ts-ignore
-    await attached_image.moveToDisk("./");
-    // @ts-ignore
-    const fileName = attached_image.fileName;
-    // console.log(fileName, "the name of the file");
-    const payload = await request.validate({ schema: informationSchema });
-    const value = { ...payload, attached_url: fileName };
-    // Now We are first going to find the user through the email
-    const user = await Database.from("users").where(
-      "email_address",
-      value.email_address
-    );
-    if (user.length === 0) {
-      return response.status(400).json({ error: "no user of such email" });
-    }
-    await Database.table("customer_support_requests").insert({
-      email_address: value.email_address,
-      last_name: value.last_name,
-      first_name: value.first_name,
-      title: value.title,
-      text: value.text,
-      user_id: user[0].id,
-      attached_url: value.attached_url,
-    });
-    return response.status(201).json(value);
-  } catch (err) {
-    console.log(err);
-    return response.status(500).json({ error: err.message });
-  }
-});
-Route.get("/", async () => {
-  return { hello: "world" };
-});
+}
+
+Route.get("/", handlerFunc(helloWorldHandler));
+Route.post("/user", handlerFunc(createUserHandler));
+Route.post("/information", handlerFunc(createCustomerSupportRequest));
